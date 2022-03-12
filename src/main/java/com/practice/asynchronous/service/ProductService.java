@@ -1,8 +1,9 @@
 package com.practice.asynchronous.service;
 
 import static com.practice.asynchronous.util.CommonUtil.stopWatch;
+import static com.practice.asynchronous.util.LoggerUtil.log;
 
-import com.practice.asynchronous.Product;
+import com.practice.asynchronous.domain.Product;
 import com.practice.asynchronous.domain.ProductInfo;
 import com.practice.asynchronous.domain.ProductOption;
 import com.practice.asynchronous.domain.Review;
@@ -12,9 +13,9 @@ import java.util.stream.Collectors;
 
 public class ProductService {
 
-  private ProductInfoService productInfoService = new ProductInfoService();
-  private ReviewService reviewService = new ReviewService();
-  private InventoryService inventoryService = new InventoryService();
+  private ProductInfoService productInfoService;
+  private ReviewService reviewService;
+  private InventoryService inventoryService;
 
   public ProductService(ProductInfoService productInfoService, ReviewService reviewService,
       InventoryService inventoryService) {
@@ -33,10 +34,20 @@ public class ProductService {
             });
 
     CompletableFuture<Review> cf_review =
-        CompletableFuture.supplyAsync(() -> reviewService.retrieveReviews(productId));
-
-    return cf_productInfo.thenCombine(cf_review,
+        CompletableFuture.supplyAsync(() -> reviewService.retrieveReviews(productId))
+            .exceptionally(e -> {
+              log("Handled exception in review service : " + e.getMessage());
+              return Review.builder()
+                  .noOfReviews(0).overallRating(0.0)
+                  .build();
+            });
+    stopWatch.stop();
+    log("Total time taken : "+ stopWatch.getTime());
+    return cf_productInfo
+        .thenCombine(cf_review,
             ((productInfo, review) -> new Product(productId, productInfo, review)))
+        .whenComplete(
+            (product, ex) -> log("Inside when complete " + product + " exception is : " + ex))
         .join();
   }
 
@@ -44,15 +55,14 @@ public class ProductService {
     List<CompletableFuture<ProductOption>> productOptionCfList =
         productInfo.getProductOptions()
             .stream()
-            .map(
-                productOption ->
-                    CompletableFuture.supplyAsync(
-                            () -> inventoryService.retrieveInventory(productOption))
-                        .thenApply(inventory -> {
-                              productOption.setInventory(inventory);
-                              return productOption;
-                            }
-                        )
+            .map(productOption ->
+                CompletableFuture.supplyAsync(
+                        () -> inventoryService.retrieveInventory(productOption))
+                    .thenApply(inventory -> {
+                          productOption.setInventory(inventory);
+                          return productOption;
+                        }
+                    )
             )
             .collect(Collectors.toList());
 
