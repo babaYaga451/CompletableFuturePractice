@@ -3,6 +3,7 @@ package com.practice.asynchronous.service;
 import static com.practice.asynchronous.util.CommonUtil.stopWatch;
 import static com.practice.asynchronous.util.LoggerUtil.log;
 
+import com.practice.asynchronous.domain.Inventory;
 import com.practice.asynchronous.domain.Product;
 import com.practice.asynchronous.domain.ProductInfo;
 import com.practice.asynchronous.domain.ProductOption;
@@ -58,6 +59,12 @@ public class ProductService {
             .map(productOption ->
                 CompletableFuture.supplyAsync(
                         () -> inventoryService.retrieveInventory(productOption))
+                    .exceptionally(ex -> {
+                      log("Handled exception in Inventory service : "+ ex.getMessage());
+                      return Inventory.builder()
+                          .count(1)
+                          .build();
+                    })
                     .thenApply(inventory -> {
                           productOption.setInventory(inventory);
                           return productOption;
